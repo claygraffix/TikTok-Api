@@ -190,7 +190,50 @@ class User:
                 return
 
             cursor = resp.get("cursor")
+    
+    async def videos_with_cursor(self, count=30, cursor=0, **kwargs) -> Iterator[tuple[Video, int]]:
+        """
+        Returns a user's videos along with the cursor for pagination.
 
+        Args:
+            count (int): The amount of videos you want per request (max 30).
+            cursor (int): The offset of videos from 0 you want to get.
+
+        Returns:
+            async iterator/generator: Yields tuple of (TikTokApi.video, cursor).
+        """
+        sec_uid = getattr(self, "sec_uid", None)
+        if sec_uid is None or sec_uid == "":
+            await self.info(**kwargs)
+
+        params = {
+            "secUid": self.sec_uid,
+            "count": min(30, count),  # TikTok usually limits to 30 per request
+            "cursor": cursor,
+        }
+
+        resp = await self.parent.make_request(
+            url="https://www.tiktok.com/api/post/item_list/",
+            params=params,
+            headers=kwargs.get("headers"),
+            session_index=kwargs.get("session_index"),
+        )
+
+        if resp is None:
+            raise InvalidResponseException(
+                resp, "TikTok returned an invalid response."
+            )
+
+        videos = resp.get("itemList", [])
+        if not videos:
+            return  # No more videos available
+
+        for video in videos:
+            yield self.parent.video(data=video), resp.get("cursor")
+
+        if not resp.get("hasMore", False):
+            return  # No more videos available
+            
     async def liked(
         self, count: int = 30, cursor: int = 0, **kwargs
     ) -> AsyncIterator[Video]:
